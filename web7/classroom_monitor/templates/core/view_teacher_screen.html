@@ -1,0 +1,416 @@
+{% extends 'base.html' %}
+
+{% block title %}View Teacher Screen - Classroom Monitor{% endblock %}
+
+{% block extra_css %}
+<style>
+    .screen-container {
+        position: relative;
+        width: 100%;
+        height: 0;
+        padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+        background-color: #f8f9fc;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 20px;
+        box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+    }
+    
+    .screen-video {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+    
+    .controls {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 10px;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    
+    .screen-container:hover .controls {
+        opacity: 1;
+    }
+    
+    .control-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: none;
+        background-color: white;
+        color: #4e73df;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .control-btn:hover {
+        background-color: #4e73df;
+        color: white;
+    }
+    
+    .status-badge {
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    
+    .status-connected {
+        background-color: #1cc88a;
+        color: white;
+    }
+    
+    .status-disconnected {
+        background-color: #e74a3b;
+        color: white;
+    }
+    
+    .status-waiting {
+        background-color: #f6c23e;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <h1 class="h3 mb-0 text-gray-800">{{ session.name }}</h1>
+        <div>
+            <span id="connectionStatus" class="status-badge status-waiting me-2">Waiting for teacher...</span>
+            <a href="{% url 'student_login' session_id=session.session_link %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-1"></i> Back
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Teacher's Screen</h6>
+            </div>
+            <div class="card-body">
+                <div class="screen-container">
+                    <video id="screenVideo" class="screen-video" autoplay></video>
+                    <div class="controls">
+                        <button id="fullscreenBtn" class="control-btn" title="Fullscreen">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <button id="muteBtn" class="control-btn" title="Mute">
+                            <i class="fas fa-volume-up"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="waitingMessage" class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Waiting for the teacher to start sharing their screen. Please keep this window open.
+                </div>
+                
+                <div id="connectedMessage" class="alert alert-success" style="display: none;">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Connected to teacher's screen. If you can't see anything, the teacher might have paused sharing.
+                </div>
+                
+                <div id="disconnectedMessage" class="alert alert-danger" style="display: none;">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Connection lost. Attempting to reconnect...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Student Information</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Name:</strong> {{ student.name }}</p>
+                        <p><strong>Student ID:</strong> {{ student.student_id }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Session:</strong> {{ session.name }}</p>
+                        <p><strong>Status:</strong> <span class="badge bg-success">Joined</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // WebRTC variables
+    let peerConnection = null;
+    let remoteStream = null;
+    let isMuted = false;
+    
+    // DOM elements
+    const screenVideo = document.getElementById('screenVideo');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    const connectionStatus = document.getElementById('connectionStatus');
+    const waitingMessage = document.getElementById('waitingMessage');
+    const connectedMessage = document.getElementById('connectedMessage');
+    const disconnectedMessage = document.getElementById('disconnectedMessage');
+    
+    // Session and student info
+    const sessionId = '{{ session.session_link }}';
+    const studentId = '{{ student.student_id }}';
+    
+    // WebSocket connection for signaling
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/screen-sharing/${sessionId}/`;
+    let socket;
+    
+    // Initialize WebSocket connection
+    function initWebSocket() {
+        socket = new WebSocket(wsUrl);
+        
+        socket.onopen = function(e) {
+            console.log('WebSocket connection established');
+            
+            // Send student connected message
+            socket.send(JSON.stringify({
+                type: 'student_connected',
+                session_id: sessionId,
+                student_id: studentId
+            }));
+        };
+        
+        socket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            handleSignalingData(data);
+        };
+        
+        socket.onclose = function(e) {
+            console.log('WebSocket connection closed');
+            updateConnectionStatus('disconnected');
+            
+            // Try to reconnect after a delay
+            setTimeout(initWebSocket, 3000);
+        };
+        
+        socket.onerror = function(e) {
+            console.error('WebSocket error:', e);
+            updateConnectionStatus('disconnected');
+        };
+    }
+    
+    // Handle signaling data
+    function handleSignalingData(data) {
+        switch(data.type) {
+            case 'offer':
+                handleOffer(data);
+                break;
+            case 'candidate':
+                handleCandidate(data);
+                break;
+            case 'start_sharing':
+                updateConnectionStatus('waiting');
+                break;
+            case 'stop_sharing':
+                stopScreenSharing();
+                break;
+        }
+    }
+    
+    // Handle offer from teacher
+    async function handleOffer(data) {
+        try {
+            // Create peer connection if not exists
+            if (!peerConnection) {
+                createPeerConnection();
+            }
+            
+            // Set remote description
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            
+            // Create answer
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            // Send answer to teacher
+            socket.send(JSON.stringify({
+                type: 'answer',
+                session_id: sessionId,
+                student_id: studentId,
+                answer: answer
+            }));
+            
+            updateConnectionStatus('connected');
+        } catch (err) {
+            console.error('Error handling offer:', err);
+            updateConnectionStatus('disconnected');
+        }
+    }
+    
+    // Handle ICE candidate from teacher
+    function handleCandidate(data) {
+        if (peerConnection) {
+            peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
+                .catch(err => console.error('Error adding ICE candidate:', err));
+        }
+    }
+    
+    // Create peer connection
+    function createPeerConnection() {
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        };
+        
+        peerConnection = new RTCPeerConnection(configuration);
+        
+        // Set up remote stream
+        peerConnection.ontrack = function(event) {
+            remoteStream = event.streams[0];
+            screenVideo.srcObject = remoteStream;
+            updateConnectionStatus('connected');
+        };
+        
+        // Handle ICE candidates
+        peerConnection.onicecandidate = function(event) {
+            if (event.candidate) {
+                socket.send(JSON.stringify({
+                    type: 'candidate',
+                    session_id: sessionId,
+                    student_id: studentId,
+                    candidate: event.candidate
+                }));
+            }
+        };
+        
+        // Handle connection state changes
+        peerConnection.onconnectionstatechange = function() {
+            switch(peerConnection.connectionState) {
+                case 'connected':
+                    updateConnectionStatus('connected');
+                    break;
+                case 'disconnected':
+                case 'failed':
+                    updateConnectionStatus('disconnected');
+                    break;
+                case 'closed':
+                    stopScreenSharing();
+                    break;
+            }
+        };
+        
+        return peerConnection;
+    }
+    
+    // Stop screen sharing
+    function stopScreenSharing() {
+        if (peerConnection) {
+            peerConnection.close();
+            peerConnection = null;
+        }
+        
+        screenVideo.srcObject = null;
+        remoteStream = null;
+        
+        updateConnectionStatus('waiting');
+    }
+    
+    // Toggle fullscreen
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            if (screenVideo.requestFullscreen) {
+                screenVideo.requestFullscreen();
+            } else if (screenVideo.webkitRequestFullscreen) {
+                screenVideo.webkitRequestFullscreen();
+            } else if (screenVideo.msRequestFullscreen) {
+                screenVideo.msRequestFullscreen();
+            }
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
+        }
+    }
+    
+    // Toggle mute
+    function toggleMute() {
+        if (remoteStream) {
+            remoteStream.getAudioTracks().forEach(track => {
+                track.enabled = isMuted;
+            });
+            
+            isMuted = !isMuted;
+            
+            if (isMuted) {
+                muteBtn.innerHTML = '<i class="fas fa-volume-mute"></i>';
+            } else {
+                muteBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+            }
+        }
+    }
+    
+    // Update connection status
+    function updateConnectionStatus(status) {
+        connectionStatus.className = 'status-badge';
+        
+        switch(status) {
+            case 'connected':
+                connectionStatus.classList.add('status-connected');
+                connectionStatus.textContent = 'Connected';
+                waitingMessage.style.display = 'none';
+                connectedMessage.style.display = 'block';
+                disconnectedMessage.style.display = 'none';
+                break;
+            case 'disconnected':
+                connectionStatus.classList.add('status-disconnected');
+                connectionStatus.textContent = 'Disconnected';
+                waitingMessage.style.display = 'none';
+                connectedMessage.style.display = 'none';
+                disconnectedMessage.style.display = 'block';
+                break;
+            case 'waiting':
+                connectionStatus.classList.add('status-waiting');
+                connectionStatus.textContent = 'Waiting for teacher...';
+                waitingMessage.style.display = 'block';
+                connectedMessage.style.display = 'none';
+                disconnectedMessage.style.display = 'none';
+                break;
+        }
+    }
+    
+    // Event listeners
+    fullscreenBtn.addEventListener('click', toggleFullscreen);
+    muteBtn.addEventListener('click', toggleMute);
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize WebSocket
+        initWebSocket();
+    });
+</script>
+{% endblock %}

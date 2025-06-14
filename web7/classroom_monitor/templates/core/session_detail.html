@@ -1,0 +1,476 @@
+{% extends 'base.html' %}
+{% load custom_filters %}
+
+{% block title %}Session Detail - Classroom Monitor{% endblock %}
+
+{% block extra_css %}
+<style>
+    .student-card {
+        transition: all 0.3s ease;
+    }
+    .student-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+    .participation-count {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background-color: var(--info-color);
+        color: white;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+    }
+    .last-activity {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+    #qrcode {
+        max-width: 200px;
+        margin: 0 auto;
+    }
+    .face-capture-container {
+        position: relative;
+        width: 100px;
+        height: 100px;
+        margin: 0 auto;
+        overflow: hidden;
+        border-radius: 50%;
+        border: 2px solid #e3e6f0;
+    }
+    .face-capture-container img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .live-indicator {
+        position: absolute;
+        bottom: 5px;
+        right: 5px;
+        width: 12px;
+        height: 12px;
+        background-color: #1cc88a;
+        border-radius: 50%;
+        border: 2px solid white;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(28, 200, 138, 0.7);
+        }
+        70% {
+            box-shadow: 0 0 0 10px rgba(28, 200, 138, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(28, 200, 138, 0);
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <h1 class="h3 mb-0 text-gray-800">{{ session.name }}</h1>
+        <div>
+            {% if session.is_active %}
+            <a href="{% url 'live_monitoring' session_id=session.session_link %}" class="btn btn-info me-2">
+                <i class="fas fa-video me-1"></i> Live Monitoring
+            </a>
+            <a href="{% url 'end_session' session_id=session.session_link %}" class="btn btn-danger">
+                <i class="fas fa-stop-circle me-1"></i> End Session
+            </a>
+            {% else %}
+            <span class="badge bg-secondary me-2">Session Ended</span>
+            {% endif %}
+            <a href="{% url 'export_session' session_id=session.session_link %}" class="btn btn-success">
+                <i class="fas fa-download me-1"></i> Export Data
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Session Info -->
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Session Information</h6>
+                <span class="badge {% if session.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                    {% if session.is_active %}Active{% else %}Ended{% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Session Name:</strong> {{ session.name }}</p>
+                        <p><strong>Start Time:</strong> {{ session.start_time|date:"M d, Y H:i" }}</p>
+                        {% if not session.is_active %}
+                        <p><strong>End Time:</strong> {{ session.end_time|date:"M d, Y H:i" }}</p>
+                        {% endif %}
+                        <p><strong>Students Joined:</strong> {{ students.count }}</p>
+                        <p><strong>Students Present:</strong> {{ attendances|dictsortreversed:"is_present"|first }}</p>
+                    </div>
+                    <div class="col-md-6 text-center">
+                        {% if session.is_active %}
+                        <div class="mb-3">
+                            <h6 class="font-weight-bold">Session Link</h6>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="sessionLink" value="{{ session_url }}" readonly>
+                                <button class="btn btn-outline-secondary" type="button" onclick="copySessionLink()">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted">Share this link with your students</small>
+                        </div>
+                        <div id="qrcode" class="mb-3"></div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Attendance Summary</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-pie pt-4 pb-2">
+                    <canvas id="attendanceChart"></canvas>
+                </div>
+                <div class="mt-4 text-center small">
+                    <span class="me-2">
+                        <i class="fas fa-circle text-success"></i> Present
+                    </span>
+                    <span class="me-2">
+                        <i class="fas fa-circle text-danger"></i> Absent
+                    </span>
+                    <span class="me-2">
+                        <i class="fas fa-circle text-warning"></i> Joined but Not Detected
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Students List -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Students</h6>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-outline-primary active" id="viewGrid">
+                        <i class="fas fa-th-large"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="viewList">
+                        <i class="fas fa-list"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if students %}
+                <!-- Grid View -->
+                <div class="row" id="gridView">
+                    {% for student_session in students %}
+                    {% with student=student_session.student %}
+                    {% with attendance=attendances|dictsortreversed:"student_id"|first %}
+                    <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
+                        <div class="card student-card h-100 position-relative">
+                            {% if participation_counts|get_item:student.id > 0 %}
+                            <div class="participation-count">{{ participation_counts|get_item:student.id }}</div>
+                            {% endif %}
+                            <div class="text-center pt-4">
+                                <div class="face-capture-container mb-3">
+                                    {% if face_captures|get_item:student.id %}
+                                    <img src="{{ face_captures|get_item:student.id }}" alt="{{ student.name }}" class="face-capture">
+                                    {% if session.is_active %}
+                                    <div class="live-indicator"></div>
+                                    {% endif %}
+                                    {% elif student.profile_pic %}
+                                    <img src="{{ student.profile_pic.url }}" alt="{{ student.name }}">
+                                    {% else %}
+                                    <div class="bg-light d-flex align-items-center justify-content-center h-100">
+                                        <i class="fas fa-user fa-3x text-gray-300"></i>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <h5 class="card-title">{{ student.name }}</h5>
+                                <p class="card-text text-muted">{{ student.student_id }}</p>
+                            </div>
+                            <div class="card-footer bg-transparent">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="status-badge {% if attendance.is_present %}present{% else %}absent{% endif %}">
+                                        {% if attendance.is_present %}Present{% else %}Absent{% endif %}
+                                    </span>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input attendance-toggle" type="checkbox" 
+                                               data-attendance-id="{{ attendance.id }}" 
+                                               {% if attendance.is_present %}checked{% endif %}>
+                                        <label class="form-check-label">Override</label>
+                                    </div>
+                                </div>
+                                <div class="last-activity mt-2">
+                                    <i class="fas fa-clock me-1"></i> Joined: {{ student_session.join_time|date:"H:i:s" }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endwith %}
+                    {% endwith %}
+                    {% endfor %}
+                </div>
+                
+                <!-- List View (Hidden by default) -->
+                <div class="table-responsive" id="listView" style="display: none;">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>ID</th>
+                                <th>Join Time</th>
+                                <th>Status</th>
+                                <th>Participation</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for student_session in students %}
+                            {% with student=student_session.student %}
+                            {% with attendance=attendances|dictsortreversed:"student_id"|first %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div style="width: 40px; height: 40px; overflow: hidden; border-radius: 50%; margin-right: 10px;">
+                                            {% if face_captures|get_item:student.id %}
+                                            <img src="{{ face_captures|get_item:student.id }}" alt="{{ student.name }}" style="width: 100%; height: 100%; object-fit: cover;">
+                                            {% elif student.profile_pic %}
+                                            <img src="{{ student.profile_pic.url }}" alt="{{ student.name }}" style="width: 100%; height: 100%; object-fit: cover;">
+                                            {% else %}
+                                            <div class="bg-light rounded-circle d-flex align-items-center justify-content-center" style="width: 100%; height: 100%;">
+                                                <i class="fas fa-user text-gray-300"></i>
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                        {{ student.name }}
+                                    </div>
+                                </td>
+                                <td>{{ student.student_id }}</td>
+                                <td>{{ student_session.join_time|date:"H:i:s" }}</td>
+                                <td>
+                                    <span class="status-badge {% if attendance.is_present %}present{% else %}absent{% endif %}">
+                                        {% if attendance.is_present %}Present{% else %}Absent{% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="participation-badge">
+                                        {{ participation_counts|get_item:student.id }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input attendance-toggle" type="checkbox" 
+                                               data-attendance-id="{{ attendance.id }}" 
+                                               {% if attendance.is_present %}checked{% endif %}>
+                                        <label class="form-check-label">Override</label>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endwith %}
+                            {% endwith %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-users fa-4x text-gray-300 mb-3"></i>
+                    <p class="mb-0">No students have joined this session yet.</p>
+                    {% if session.is_active %}
+                    <p class="text-muted">Share the session link with your students to get started.</p>
+                    <div class="mt-3">
+                        <div class="input-group w-75 mx-auto">
+                            <input type="text" class="form-control" id="sessionLink" value="{{ session_url }}" readonly>
+                            <button class="btn btn-outline-secondary" type="button" onclick="copySessionLink()">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/qrcode.js@1.0.0/qrcode.min.js"></script>
+<script>
+    // Toggle between grid and list view
+    document.getElementById('viewGrid').addEventListener('click', function() {
+        document.getElementById('gridView').style.display = 'flex';
+        document.getElementById('listView').style.display = 'none';
+        this.classList.add('active');
+        document.getElementById('viewList').classList.remove('active');
+    });
+    
+    document.getElementById('viewList').addEventListener('click', function() {
+        document.getElementById('gridView').style.display = 'none';
+        document.getElementById('listView').style.display = 'block';
+        this.classList.add('active');
+        document.getElementById('viewGrid').classList.remove('active');
+    });
+    
+    // Copy session link to clipboard
+    function copySessionLink() {
+        var copyText = document.getElementById("sessionLink");
+        copyText.select();
+        copyText.setSelectionRange(0, 99999);
+        navigator.clipboard.writeText(copyText.value);
+        
+        // Show tooltip or alert
+        alert("Session link copied to clipboard!");
+    }
+    
+    // Generate QR code for session link
+    {% if session.is_active %}
+    var qrcode = new QRCode(document.getElementById("qrcode"), {
+        text: "{{ session_url }}",
+        width: 128,
+        height: 128,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+    });
+    {% endif %}
+    
+    // Attendance chart
+    {% if attendances %}
+    var ctx = document.getElementById("attendanceChart");
+    var presentCount = {{ attendances|dictsortreversed:"is_present"|length }};
+    var absentCount = {{ attendances|length }} - presentCount;
+    var joinedCount = {{ students.count }} - (presentCount + absentCount);
+    
+    var myPieChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ["Present", "Absent", "Joined but Not Detected"],
+            datasets: [{
+                data: [presentCount, absentCount, joinedCount],
+                backgroundColor: ['#1cc88a', '#e74a3b', '#f6c23e'],
+                hoverBackgroundColor: ['#17a673', '#be2617', '#dda20a'],
+                hoverBorderColor: "rgba(234, 236, 244, 1)",
+            }],
+        },
+        options: {
+            maintainAspectRatio: false,
+            tooltips: {
+                backgroundColor: "rgb(255,255,255)",
+                bodyFontColor: "#858796",
+                borderColor: '#dddfeb',
+                borderWidth: 1,
+                xPadding: 15,
+                yPadding: 15,
+                displayColors: false,
+                caretPadding: 10,
+            },
+            legend: {
+                display: false
+            },
+            cutoutPercentage: 80,
+        },
+    });
+    {% endif %}
+    
+    // Attendance override toggle
+    document.querySelectorAll('.attendance-toggle').forEach(function(toggle) {
+        toggle.addEventListener('change', function() {
+            var attendanceId = this.dataset.attendanceId;
+            var isPresent = this.checked;
+            
+            // Send AJAX request to update attendance
+            fetch('/api/attendance/override/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    attendance_id: attendanceId,
+                    is_present: isPresent
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update UI
+                    var statusBadges = document.querySelectorAll(`[data-attendance-id="${attendanceId}"]`);
+                    statusBadges.forEach(function(badge) {
+                        var parentCard = badge.closest('.student-card');
+                        if (parentCard) {
+                            var statusBadge = parentCard.querySelector('.status-badge');
+                            if (statusBadge) {
+                                if (isPresent) {
+                                    statusBadge.textContent = 'Present';
+                                    statusBadge.classList.remove('absent');
+                                    statusBadge.classList.add('present');
+                                } else {
+                                    statusBadge.textContent = 'Absent';
+                                    statusBadge.classList.remove('present');
+                                    statusBadge.classList.add('absent');
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Show success message
+                    alert('Attendance updated successfully!');
+                } else {
+                    // Show error message
+                    alert('Error updating attendance: ' + data.error);
+                    // Revert toggle state
+                    this.checked = !isPresent;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while updating attendance.');
+                // Revert toggle state
+                this.checked = !isPresent;
+            });
+        });
+    });
+    
+    // Periodically update face captures for active sessions
+    {% if session.is_active %}
+    function updateFaceCaptures() {
+        fetch('/api/sessions/{{ session.session_link }}/face-captures/')
+            .then(response => response.json())
+            .then(data => {
+                const faceCaptures = data.face_captures;
+                for (const studentId in faceCaptures) {
+                    const faceCapture = faceCaptures[studentId];
+                    const faceElements = document.querySelectorAll(`.face-capture[data-student-id="${studentId}"]`);
+                    faceElements.forEach(element => {
+                        element.src = faceCapture.url;
+                    });
+                }
+            })
+            .catch(error => console.error('Error updating face captures:', error));
+    }
+    
+    // Update face captures every 10 seconds
+    setInterval(updateFaceCaptures, 10000);
+    {% endif %}
+</script>
+{% endblock %}

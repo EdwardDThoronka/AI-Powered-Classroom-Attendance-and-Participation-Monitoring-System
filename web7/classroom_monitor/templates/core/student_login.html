@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}Student Login - Classroom Monitor{% endblock %}
+
+{% block full_content %}
+<div class="container student-login-container py-5">
+    <div class="card shadow border-0 rounded-lg">
+        <div class="card-header bg-primary text-white text-center py-4">
+            <h3 class="font-weight-light my-2">Join Session</h3>
+            <p class="mb-0">{{ session.name }}</p>
+        </div>
+        <div class="card-body">
+            {% if error %}
+            <div class="alert alert-danger">{{ error }}</div>
+            {% endif %}
+            
+            <form method="post" action="{% url 'student_join' session_id=session.session_link %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="name" class="form-label">Your Name</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-user"></i></span>
+                        <input type="text" class="form-control" id="name" name="name" placeholder="Enter your full name" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="student_id" class="form-label">Student ID</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-id-card"></i></span>
+                        <input type="text" class="form-control" id="student_id" name="student_id" placeholder="Enter your student ID" required>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="profile_pic" class="form-label">Profile Picture (Optional)</label>
+                    <div class="text-center mb-3">
+                        <img id="profile-preview" src="https://via.placeholder.com/150" class="profile-upload-preview" alt="Profile Preview">
+                    </div>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-camera"></i></span>
+                        <input type="file" class="form-control" id="profile_pic" name="profile_pic" accept="image/*">
+                    </div>
+                    <div class="form-text text-muted">
+                        Upload a profile picture to help your teacher identify you.
+                    </div>
+                </div>
+                
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-sign-in-alt me-2"></i> Join Session
+                    </button>
+                </div>
+            </form>
+        </div>
+        <div class="card-footer text-center py-3">
+            <div class="small">
+                <p class="mb-0">By joining this session, you agree to allow the system to detect your face and hand gestures for attendance and participation tracking.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Preview profile picture before upload
+    document.getElementById('profile_pic').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                document.getElementById('profile-preview').src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+</script>
+{% endblock %}
+{% endblock %}

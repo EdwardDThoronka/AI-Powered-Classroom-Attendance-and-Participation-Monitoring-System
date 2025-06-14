@@ -1,0 +1,573 @@
+{% extends 'base.html' %}
+
+{% block title %}Live Monitoring - Classroom Monitor{% endblock %}
+
+{% block extra_css %}
+<style>
+    .student-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+    }
+    
+    .student-card {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+        transition: all 0.3s ease;
+    }
+    
+    .student-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+    
+    .student-header {
+        padding: 10px 15px;
+        background-color: #4e73df;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .student-body {
+        padding: 15px;
+        position: relative;
+    }
+    
+    .webcam-container {
+        position: relative;
+        width: 100%;
+        height: 0;
+        padding-bottom: 75%; /* 4:3 Aspect Ratio */
+        overflow: hidden;
+        background-color: #f8f9fc;
+        border-radius: 5px;
+    }
+    
+    .webcam-feed {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .status-indicator {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        border: 2px solid white;
+    }
+    
+    .status-online {
+        background-color: #1cc88a;
+        animation: pulse 2s infinite;
+    }
+    
+    .status-offline {
+        background-color: #e74a3b;
+    }
+    
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(28, 200, 138, 0.7);
+        }
+        70% {
+            box-shadow: 0 0 0 10px rgba(28, 200, 138, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(28, 200, 138, 0);
+        }
+    }
+    
+    .student-footer {
+        padding: 10px 15px;
+        background-color: #f8f9fc;
+        border-top: 1px solid #e3e6f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .participation-badge {
+        background-color: #4e73df;
+        color: white;
+        border-radius: 50%;
+        width: 25px;
+        height: 25px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    
+    .screen-sharing-container {
+        position: relative;
+        width: 100%;
+        height: 0;
+        padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+        background-color: #f8f9fc;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 20px;
+        box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+    }
+    
+    .screen-sharing-video {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+    
+    .screen-sharing-controls {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 10px;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    
+    .screen-sharing-container:hover .screen-sharing-controls {
+        opacity: 1;
+    }
+    
+    .control-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: none;
+        background-color: white;
+        color: #4e73df;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .control-btn:hover {
+        background-color: #4e73df;
+        color: white;
+    }
+    
+    .control-btn.active {
+        background-color: #e74a3b;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <h1 class="h3 mb-0 text-gray-800">Live Monitoring - {{ session.name }}</h1>
+        <div>
+            <a href="{% url 'session_detail' session_id=session.session_link %}" class="btn btn-secondary me-2">
+                <i class="fas fa-arrow-left me-1"></i> Back to Session
+            </a>
+            <button id="shareScreenBtn" class="btn btn-primary">
+                <i class="fas fa-desktop me-1"></i> Share Screen
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Screen Sharing Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Screen Sharing</h6>
+                <div id="sharingStatus" class="badge bg-secondary">Not Sharing</div>
+            </div>
+            <div class="card-body">
+                <div class="screen-sharing-container">
+                    <video id="screenVideo" class="screen-sharing-video" autoplay muted></video>
+                    <div class="screen-sharing-controls">
+                        <button id="startSharingBtn" class="control-btn" title="Start Sharing">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button id="stopSharingBtn" class="control-btn" title="Stop Sharing" disabled>
+                            <i class="fas fa-stop"></i>
+                        </button>
+                        <button id="toggleAudioBtn" class="control-btn" title="Toggle Audio">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <button id="fullscreenBtn" class="control-btn" title="Fullscreen">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Share your screen with students to demonstrate concepts or provide instructions. Students will see your shared screen in real-time.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Student Monitoring Section -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Student Monitoring</h6>
+                <div>
+                    <span class="me-3">
+                        <i class="fas fa-circle text-success me-1"></i> Online: <span id="onlineCount">0</span>
+                    </span>
+                    <span>
+                        <i class="fas fa-circle text-danger me-1"></i> Offline: <span id="offlineCount">0</span>
+                    </span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="student-grid" id="studentGrid">
+                    {% for student_session in students %}
+                    {% with student=student_session.student %}
+                    <div class="student-card" data-student-id="{{ student.id }}">
+                        <div class="student-header">
+                            <h6 class="mb-0">{{ student.name }}</h6>
+                            <small>{{ student.student_id }}</small>
+                        </div>
+                        <div class="student-body">
+                            <div class="webcam-container">
+                                <img src="" class="webcam-feed" id="student-feed-{{ student.id }}" alt="{{ student.name }}">
+                                <div class="status-indicator status-offline" id="status-{{ student.id }}"></div>
+                            </div>
+                        </div>
+                        <div class="student-footer">
+                            <span class="last-activity" id="last-activity-{{ student.id }}">Last seen: Never</span>
+                            <div class="participation-badge" id="participation-{{ student.id }}">0</div>
+                        </div>
+                    </div>
+                    {% endwith %}
+                    {% endfor %}
+                </div>
+                
+                {% if not students %}
+                <div class="text-center py-5">
+                    <i class="fas fa-users fa-4x text-gray-300 mb-3"></i>
+                    <p class="mb-0">No students have joined this session yet.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // WebRTC variables
+    let localStream = null;
+    let peerConnections = {};
+    let screenStream = null;
+    let isSharing = false;
+    let audioEnabled = false;
+    
+    // DOM elements
+    const screenVideo = document.getElementById('screenVideo');
+    const shareScreenBtn = document.getElementById('shareScreenBtn');
+    const startSharingBtn = document.getElementById('startSharingBtn');
+    const stopSharingBtn = document.getElementById('stopSharingBtn');
+    const toggleAudioBtn = document.getElementById('toggleAudioBtn');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const sharingStatus = document.getElementById('sharingStatus');
+    
+    // WebSocket connection for signaling
+    const sessionId = '{{ session.session_link }}';
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/screen-sharing/${sessionId}/`;
+    let socket;
+    
+    // Initialize WebSocket connection
+    function initWebSocket() {
+        socket = new WebSocket(wsUrl);
+        
+        socket.onopen = function(e) {
+            console.log('WebSocket connection established');
+        };
+        
+        socket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            handleSignalingData(data);
+        };
+        
+        socket.onclose = function(e) {
+            console.log('WebSocket connection closed');
+            // Try to reconnect after a delay
+            setTimeout(initWebSocket, 3000);
+        };
+        
+        socket.onerror = function(e) {
+            console.error('WebSocket error:', e);
+        };
+    }
+    
+    // Handle signaling data
+    function handleSignalingData(data) {
+        switch(data.type) {
+            case 'offer':
+                handleOffer(data);
+                break;
+            case 'answer':
+                handleAnswer(data);
+                break;
+            case 'candidate':
+                handleCandidate(data);
+                break;
+            case 'student_connected':
+                updateStudentStatus(data.student_id, true);
+                break;
+            case 'student_disconnected':
+                updateStudentStatus(data.student_id, false);
+                break;
+            case 'face_update':
+                updateStudentFace(data.student_id, data.face_url, data.timestamp);
+                break;
+            case 'participation_update':
+                updateStudentParticipation(data.student_id, data.count);
+                break;
+        }
+    }
+    
+    // Start screen sharing
+    async function startScreenSharing() {
+        try {
+            screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    cursor: 'always'
+                },
+                audio: false
+            });
+            
+            screenVideo.srcObject = screenStream;
+            
+            // Enable stop button and disable start button
+            startSharingBtn.disabled = true;
+            stopSharingBtn.disabled = false;
+            
+            // Update sharing status
+            sharingStatus.textContent = 'Sharing';
+            sharingStatus.classList.remove('bg-secondary');
+            sharingStatus.classList.add('bg-success');
+            
+            // Set isSharing flag
+            isSharing = true;
+            
+            // Send offer to all connected students
+            createAndSendOffer();
+            
+            // Handle stream ending
+            screenStream.getVideoTracks()[0].onended = function() {
+                stopScreenSharing();
+            };
+        } catch (err) {
+            console.error('Error starting screen sharing:', err);
+            alert('Failed to start screen sharing. Please try again.');
+        }
+    }
+    
+    // Stop screen sharing
+    function stopScreenSharing() {
+        if (screenStream) {
+            screenStream.getTracks().forEach(track => track.stop());
+            screenVideo.srcObject = null;
+            screenStream = null;
+        }
+        
+        // Reset buttons
+        startSharingBtn.disabled = false;
+        stopSharingBtn.disabled = true;
+        
+        // Update sharing status
+        sharingStatus.textContent = 'Not Sharing';
+        sharingStatus.classList.remove('bg-success');
+        sharingStatus.classList.add('bg-secondary');
+        
+        // Set isSharing flag
+        isSharing = false;
+        
+        // Close all peer connections
+        for (let id in peerConnections) {
+            peerConnections[id].close();
+            delete peerConnections[id];
+        }
+        
+        // Send stop sharing message to all students
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'stop_sharing',
+                session_id: sessionId
+            }));
+        }
+    }
+    
+    // Toggle audio
+    async function toggleAudio() {
+        if (!screenStream) return;
+        
+        if (audioEnabled) {
+            // Disable audio
+            screenStream.getAudioTracks().forEach(track => track.stop());
+            audioEnabled = false;
+            toggleAudioBtn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+        } else {
+            // Enable audio
+            try {
+                const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioStream.getAudioTracks().forEach(track => {
+                    screenStream.addTrack(track);
+                });
+                audioEnabled = true;
+                toggleAudioBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+            } catch (err) {
+                console.error('Error enabling audio:', err);
+                alert('Failed to enable audio. Please check your microphone permissions.');
+            }
+        }
+    }
+    
+    // Toggle fullscreen
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            if (screenVideo.requestFullscreen) {
+                screenVideo.requestFullscreen();
+            } else if (screenVideo.webkitRequestFullscreen) {
+                screenVideo.webkitRequestFullscreen();
+            } else if (screenVideo.msRequestFullscreen) {
+                screenVideo.msRequestFullscreen();
+            }
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
+        }
+    }
+    
+    // Create and send offer to students
+    function createAndSendOffer() {
+        if (!screenStream || !socket || socket.readyState !== WebSocket.OPEN) return;
+        
+        socket.send(JSON.stringify({
+            type: 'start_sharing',
+            session_id: sessionId
+        }));
+    }
+    
+    // Update student status (online/offline)
+    function updateStudentStatus(studentId, isOnline) {
+        const statusIndicator = document.getElementById(`status-${studentId}`);
+        if (!statusIndicator) return;
+        
+        if (isOnline) {
+            statusIndicator.classList.remove('status-offline');
+            statusIndicator.classList.add('status-online');
+        } else {
+            statusIndicator.classList.remove('status-online');
+            statusIndicator.classList.add('status-offline');
+        }
+        
+        // Update online/offline counts
+        updateCounts();
+    }
+    
+    // Update student face
+    function updateStudentFace(studentId, faceUrl, timestamp) {
+        const feedElement = document.getElementById(`student-feed-${studentId}`);
+        const lastActivityElement = document.getElementById(`last-activity-${studentId}`);
+        
+        if (feedElement) {
+            feedElement.src = faceUrl;
+        }
+        
+        if (lastActivityElement) {
+            const date = new Date(timestamp);
+            lastActivityElement.textContent = `Last seen: ${date.toLocaleTimeString()}`;
+        }
+        
+        // Update student status to online
+        updateStudentStatus(studentId, true);
+    }
+    
+    // Update student participation count
+    function updateStudentParticipation(studentId, count) {
+        const participationElement = document.getElementById(`participation-${studentId}`);
+        if (participationElement) {
+            participationElement.textContent = count;
+        }
+    }
+    
+    // Update online/offline counts
+    function updateCounts() {
+        const onlineIndicators = document.querySelectorAll('.status-online');
+        const offlineIndicators = document.querySelectorAll('.status-offline');
+        
+        document.getElementById('onlineCount').textContent = onlineIndicators.length;
+        document.getElementById('offlineCount').textContent = offlineIndicators.length;
+    }
+    
+    // Fetch initial student data
+    function fetchStudentData() {
+        fetch(`/api/sessions/${sessionId}/students/`)
+            .then(response => response.json())
+            .then(data => {
+                data.students.forEach(student => {
+                    if (student.face_capture) {
+                        updateStudentFace(student.id, student.face_capture, student.join_time);
+                    }
+                    updateStudentParticipation(student.id, student.participation_count);
+                });
+                updateCounts();
+            })
+            .catch(error => console.error('Error fetching student data:', error));
+    }
+    
+    // Periodically update student data
+    function startDataUpdates() {
+        // Initial fetch
+        fetchStudentData();
+        
+        // Update every 5 seconds
+        setInterval(fetchStudentData, 5000);
+    }
+    
+    // Event listeners
+    shareScreenBtn.addEventListener('click', startScreenSharing);
+    startSharingBtn.addEventListener('click', startScreenSharing);
+    stopSharingBtn.addEventListener('click', stopScreenSharing);
+    toggleAudioBtn.addEventListener('click', toggleAudio);
+    fullscreenBtn.addEventListener('click', toggleFullscreen);
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize WebSocket
+        initWebSocket();
+        
+        // Start data updates
+        startDataUpdates();
+    });
+</script>
+{% endblock %}

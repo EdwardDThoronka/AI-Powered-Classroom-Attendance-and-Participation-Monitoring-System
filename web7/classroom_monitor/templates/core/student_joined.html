@@ -1,0 +1,272 @@
+{% extends 'base.html' %}
+
+{% block title %}Student Joined - Classroom Monitor{% endblock %}
+
+{% block full_content %}
+<div class="container py-5">
+    <div class="card shadow border-0 rounded-lg">
+        <div class="card-header bg-success text-white text-center py-4">
+            <h3 class="font-weight-light my-2">Successfully Joined!</h3>
+            <p class="mb-0">{{ session.name }}</p>
+        </div>
+        <div class="card-body">
+            <div class="text-center mb-4">
+                <div class="bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" style="width: 100px; height: 100px;">
+                    {% if student.profile_pic %}
+                    <img src="{{ student.profile_pic.url }}" alt="{{ student.name }}" class="rounded-circle" width="100" height="100">
+                    {% else %}
+                    <i class="fas fa-user fa-3x text-gray-300"></i>
+                    {% endif %}
+                </div>
+                <h4>Welcome, {{ student.name }}!</h4>
+                <p class="text-muted">Student ID: {{ student.student_id }}</p>
+            </div>
+            
+            <div class="alert alert-info">
+                <div class="d-flex">
+                    <div class="me-3">
+                        <i class="fas fa-info-circle fa-2x"></i>
+                    </div>
+                    <div>
+                        <h5 class="alert-heading">Detection Starting</h5>
+                        <p class="mb-0">The system will now use your webcam to detect your presence and hand raises for attendance and participation tracking.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="webcam-container mt-4">
+                <video id="webcam" autoplay playsinline></video>
+                <canvas id="detection-overlay" class="detection-overlay"></canvas>
+                <div id="detection-status" class="detection-status">
+                    <span id="face-status">Face: Not Detected</span> | 
+                    <span id="hand-status">Hand: Not Detected</span>
+                </div>
+            </div>
+            
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-user-check me-2 text-success"></i> Attendance Status
+                            </h5>
+                            <p class="card-text" id="attendance-status">Waiting for face detection...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-hand-paper me-2 text-info"></i> Participation
+                            </h5>
+                            <p class="card-text">Hand raises detected: <span id="participation-count">0</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer text-center py-3">
+            <div class="small">
+                <p class="mb-0">Please keep this window open for continuous detection. You can minimize it but don't close it.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Global variables
+    let video;
+    let canvas;
+    let ctx;
+    let faceDetected = false;
+    let handRaised = false;
+    let participationCount = 0;
+    let lastHandRaiseTime = 0;
+    const handRaiseCooldown = 3000; // 3 seconds cooldown between hand raise detections
+    
+    // DOM elements
+    const faceStatusEl = document.getElementById('face-status');
+    const handStatusEl = document.getElementById('hand-status');
+    const attendanceStatusEl = document.getElementById('attendance-status');
+    const participationCountEl = document.getElementById('participation-count');
+    
+    // Initialize webcam
+    async function setupCamera() {
+        video = document.getElementById('webcam');
+        canvas = document.getElementById('detection-overlay');
+        ctx = canvas.getContext('2d');
+        
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480 },
+            audio: false
+        });
+        video.srcObject = stream;
+        
+        return new Promise((resolve) => {
+            video.onloadedmetadata = () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                resolve(video);
+            };
+        });
+    }
+    
+    // Send face detection request
+    async function detectFace() {
+        if (!video || !video.videoWidth) return;
+        
+        // Create a canvas to capture the current frame
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = video.videoWidth;
+        tempCanvas.height = video.videoHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Convert canvas to base64 image data
+        const imageData = tempCanvas.toDataURL('image/jpeg', 0.7);
+        
+        try {
+            const response = await fetch('/detection/face/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    session_id: '{{ session.session_link }}',
+                    student_id: '{{ student.student_id }}',
+                    image_data: imageData
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                faceDetected = data.face_detected;
+                faceStatusEl.textContent = `Face: ${faceDetected ? 'Detected ✓' : 'Not Detected'}`;
+                
+                if (faceDetected) {
+                    faceStatusEl.classList.add('text-success');
+                    attendanceStatusEl.textContent = 'Present ✓';
+                    attendanceStatusEl.classList.add('text-success');
+                    
+                    // Draw face detection indicator
+                    ctx.strokeStyle = '#1cc88a';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(
+                        video.videoWidth / 4,
+                        video.videoHeight / 4,
+                        video.videoWidth / 2,
+                        video.videoHeight / 2
+                    );
+                } else {
+                    faceStatusEl.classList.remove('text-success');
+                    attendanceStatusEl.textContent = 'Waiting for face detection...';
+                    attendanceStatusEl.classList.remove('text-success');
+                    
+                    // Clear canvas
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            }
+        } catch (error) {
+            console.error('Error detecting face:', error);
+        }
+    }
+    
+    // Send hand detection request
+    async function detectHand() {
+        if (!video || !video.videoWidth) return;
+        
+        // Create a canvas to capture the current frame
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = video.videoWidth;
+        tempCanvas.height = video.videoHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Convert canvas to base64 image data
+        const imageData = tempCanvas.toDataURL('image/jpeg', 0.7);
+        
+        try {
+            const response = await fetch('/detection/hand/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    session_id: '{{ session.session_link }}',
+                    student_id: '{{ student.student_id }}',
+                    image_data: imageData
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                const handDetected = data.hand_detected;
+                handRaised = data.hand_raised;
+                
+                handStatusEl.textContent = `Hand: ${handRaised ? 'Raised ✓' : (handDetected ? 'Detected' : 'Not Detected')}`;
+                
+                if (handRaised) {
+                    handStatusEl.classList.add('text-success');
+                    
+                    // Check if enough time has passed since last hand raise
+                    const now = Date.now();
+                    if (now - lastHandRaiseTime > handRaiseCooldown && data.participation_recorded) {
+                        participationCount++;
+                        participationCountEl.textContent = participationCount;
+                        lastHandRaiseTime = now;
+                    }
+                    
+                    // Draw hand raise indicator
+                    ctx.fillStyle = 'rgba(54, 185, 204, 0.3)';
+                    ctx.fillRect(
+                        video.videoWidth / 2,
+                        0,
+                        video.videoWidth / 2,
+                        video.videoHeight / 2
+                    );
+                } else {
+                    handStatusEl.classList.remove('text-success');
+                }
+            }
+        } catch (error) {
+            console.error('Error detecting hand:', error);
+        }
+    }
+    
+    // Main detection loop
+    async function detectionLoop() {
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Run face detection
+        await detectFace();
+        
+        // Run hand detection
+        await detectHand();
+        
+        // Schedule next detection
+        setTimeout(detectionLoop, 1000);
+    }
+    
+    // Initialize
+    async function init() {
+        try {
+            await setupCamera();
+            detectionLoop();
+        } catch (error) {
+            console.error('Error initializing camera:', error);
+            alert('Error accessing webcam. Please ensure you have granted camera permissions and try again.');
+        }
+    }
+    
+    // Start detection when page loads
+    window.addEventListener('load', init);
+</script>
+{% endblock %}
+{% endblock %}

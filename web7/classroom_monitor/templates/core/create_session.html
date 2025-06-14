@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Session - Classroom Monitor{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-0 text-gray-800">Create New Session</h1>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Session Details</h6>
+            </div>
+            <div class="card-body">
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Session Name</label>
+                        <input type="text" class="form-control" id="name" name="name" placeholder="Enter session name (e.g., Math Class - May 26)" required>
+                        <div class="form-text text-muted">
+                            Give your session a descriptive name to easily identify it later.
+                        </div>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-plus-circle me-2"></i> Create Session
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">How It Works</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-4">
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 30px; height: 30px;">
+                            <span>1</span>
+                        </div>
+                        <h5 class="mb-0">Create a Session</h5>
+                    </div>
+                    <p class="text-muted ms-5">Enter a name for your session and click "Create Session".</p>
+                </div>
+                
+                <div class="mb-4">
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 30px; height: 30px;">
+                            <span>2</span>
+                        </div>
+                        <h5 class="mb-0">Share the Link</h5>
+                    </div>
+                    <p class="text-muted ms-5">Share the generated session link with your students.</p>
+                </div>
+                
+                <div class="mb-4">
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 30px; height: 30px;">
+                            <span>3</span>
+                        </div>
+                        <h5 class="mb-0">Students Join</h5>
+                    </div>
+                    <p class="text-muted ms-5">Students access the link and enter their name and ID.</p>
+                </div>
+                
+                <div>
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 30px; height: 30px;">
+                            <span>4</span>
+                        </div>
+                        <h5 class="mb-0">Monitor Attendance</h5>
+                    </div>
+                    <p class="text-muted ms-5">View real-time attendance and participation data on the session dashboard.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

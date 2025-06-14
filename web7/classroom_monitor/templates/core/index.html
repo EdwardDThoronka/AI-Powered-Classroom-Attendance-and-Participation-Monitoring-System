@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block title %}Home - Classroom Monitor{% endblock %}
+
+{% block full_content %}
+<!-- Landing Page -->
+<div class="landing-hero">
+    <div class="container text-center">
+        <h1 class="display-4 fw-bold mb-4">AI-Powered Classroom Attendance System</h1>
+        <p class="lead mb-5">Automatically track student attendance and participation using face and hand gesture recognition</p>
+        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            <a href="{% url 'login' %}" class="btn btn-light btn-lg px-4 gap-3">
+                <i class="fas fa-sign-in-alt me-2"></i> Teacher Login
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="container py-5">
+    <!-- Features Section -->
+    <div class="row text-center mb-5">
+        <div class="col-12">
+            <h2 class="fw-bold mb-4">Key Features</h2>
+        </div>
+    </div>
+    
+    <div class="row g-4 mb-5">
+        <div class="col-md-4">
+            <div class="card h-100 text-center p-4">
+                <div class="feature-icon">
+                    <i class="fas fa-user-check"></i>
+                </div>
+                <h4>Automated Attendance</h4>
+                <p class="text-muted">Detect and log student attendance using face recognition through webcam.</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100 text-center p-4">
+                <div class="feature-icon">
+                    <i class="fas fa-hand-paper"></i>
+                </div>
+                <h4>Participation Tracking</h4>
+                <p class="text-muted">Detect hand-raising gestures as a measure of classroom participation.</p>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100 text-center p-4">
+                <div class="feature-icon">
+                    <i class="fas fa-chart-bar"></i>
+                </div>
+                <h4>Real-time Dashboard</h4>
+                <p class="text-muted">View and export attendance and participation data in real-time.</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- How It Works Section -->
+    <div class="row text-center mb-5">
+        <div class="col-12">
+            <h2 class="fw-bold mb-4">How It Works</h2>
+        </div>
+    </div>
+    
+    <div class="row g-4 mb-5">
+        <div class="col-md-3">
+            <div class="card h-100 text-center p-3">
+                <div class="bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                    <h3 class="m-0">1</h3>
+                </div>
+                <h5 class="mt-3">Create Session</h5>
+                <p class="text-muted small">Teacher creates a new session and shares the unique link with students.</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 text-center p-3">
+                <div class="bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                    <h3 class="m-0">2</h3>
+                </div>
+                <h5 class="mt-3">Student Login</h5>
+                <p class="text-muted small">Students access the link and login with their name and ID.</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 text-center p-3">
+                <div class="bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                    <h3 class="m-0">3</h3>
+                </div>
+                <h5 class="mt-3">AI Detection</h5>
+                <p class="text-muted small">System detects faces and hand raises through webcam.</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100 text-center p-3">
+                <div class="bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                    <h3 class="m-0">4</h3>
+                </div>
+                <h5 class="mt-3">View Reports</h5>
+                <p class="text-muted small">Teacher views and exports attendance and participation data.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
