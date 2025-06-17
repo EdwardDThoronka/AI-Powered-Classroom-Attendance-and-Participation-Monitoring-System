@@ -32,4 +32,4 @@ Students join the session with their name and ID
 The system automatically tracks attendance and participation
 End the session and export data when finished
 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the LICENSE file for details. Contributions are open.
